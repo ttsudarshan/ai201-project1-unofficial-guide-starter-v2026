@@ -1,6 +1,6 @@
 # The Unofficial Guide
 
-Sudarshan (ttsudarshan) — corpus: `campus_life`
+Sudarshan — corpus: `campus_life`
 
 > **This file is your submission.** Fill it in as you go — most sections get
 > written during the milestone that produces them, not at the end.
@@ -27,7 +27,7 @@ Sudarshan (ttsudarshan) — corpus: `campus_life`
 
      Milestone 5. -->
 
-The Unofficial Guide answers questions about student life at a fictional university using the `campus_life` corpus: 88 short posts from students on dining halls, dorms (laundry, noise), courses (exams, workload), and the administrative rules nobody explains, such as the housing lottery, add/drop, pass/fail and parking. It retrieves the closest chunks from a local Chroma index, refuses in code if nothing is close enough, and otherwise has a Gemini model answer from those chunks only, naming the source file. Ask it things like "Is the housing lottery random?" or "How much does a wash cost in Aldridge Hall?"; ask it about Mongolia and it says it doesn't know.
+I picked the `campus_life` corpus, which is 88 short posts from students about life at a made-up university: dining halls, dorms, courses, and the admin rules nobody explains (housing lottery, add/drop, pass/fail, parking). You type a question, it finds the closest chunks in a local Chroma index, and a Gemini model answers using only those chunks and names the file it used. If nothing in the index is close enough it just says it doesn't know instead of guessing.
 
 ## Chunking Strategy
 
@@ -44,7 +44,11 @@ The Unofficial Guide answers questions about student life at a fictional univers
 
      Milestone 3. -->
 
-What I saw in Milestone 1: every post is a title line plus one to four short paragraphs, 178 to 554 characters, and the starter's 800-character window never cut anything (88 documents, 88 chunks). What shaped my design is that the title carries the subject: `housing_aldridge_hall_laundry.txt` opens "Laundry in Aldridge Hall" and the body says only "Machines take $1.75 wash", so a chunk without its title can't be found by someone asking about Aldridge Hall, and there is a near-identical sibling post for every other building and course. So `chunker.py::split_documents` (1) keeps the title on every chunk, (2) packs whole paragraphs up to 450 characters, so a post that fits stays one chunk and a longer multi-topic post (e.g. Tamsin Court's good/bad/laundry/noise paragraphs) splits between paragraphs rather than inside them, and (3) merges a trailing piece under 100 characters backwards instead of leaving a fragment. Result: 88 documents became 91 chunks; only three posts were long enough to split. I chose 450 rather than 800 because nothing here needs more room, and not much smaller because one paragraph is one fact and the answer needs its neighbours. I did not change my mind partway through.
+When I read the documents, every post was a title line plus one to four short paragraphs, somewhere between 178 and 554 characters. The starter's 800-character chunker never split anything (88 documents, 88 chunks), so it wasn't really chunking at all.
+
+The thing I noticed is that the title is where the subject lives. `housing_aldridge_hall_laundry.txt` starts with "Laundry in Aldridge Hall", but the body only says "Machines take $1.75 wash". Take the title off and nobody asking about Aldridge Hall can find it, and there's a lookalike post for every other building and course. So my chunker (`chunker.py::split_documents`) puts the title at the top of every chunk, and packs whole paragraphs together up to 450 characters. A post that fits stays as one chunk. A longer one, like the Tamsin Court post with its good/bad/laundry/noise paragraphs, splits between paragraphs and never in the middle of one. A leftover piece under 100 characters gets merged back into the previous chunk so there are no tiny fragments.
+
+That gave 91 chunks from 88 documents, so only three posts were long enough to split. I went with 450 because nothing in this corpus needs more room, but I didn't go much smaller because each paragraph is one fact and it needs its neighbours to make sense. I didn't change my mind partway through.
 
 ## Sample Chunks
 
@@ -162,9 +166,9 @@ Source: admin_housing_lottery.txt
 
      Milestone 5. -->
 
-**1.** I gave Claude Code the full project brief and asked it to build the Unit 1 pieces. For the chunker it read the corpus first, noticed that a post's title is the only place the building or course is named, and wrote `chunker.py::split_documents` to repeat the title on every chunk and pack paragraphs up to 450 characters. I did not accept "it looks right": I had it print five chunks, and checked with a script that every `expects` phrase in `questions.py` appears whole inside one chunk (5 of 5 did). Its first attempt at filling in this README overwrote the later sections (Sample Answer, cutoff table) with a bad string splice; the diff showed it, so I had the file restored from git and redone with targeted replacements.
+**1. The chunker.** I told Claude Code what the assignment was and asked it to write a chunker for my corpus. It read the posts first and pointed out that the title is the only place the building or course is named, so it wrote a version that repeats the title on every chunk. I didn't just trust it. I printed five chunks and read them, and I ran a check that each `expects` phrase in `questions.py` shows up whole inside a single chunk (all 5 did). When it tried to fill in this README it accidentally wiped out the later sections with a bad string replace, so I had it restore the file from git and redo it more carefully.
 
-**2.** For the cutoff I asked Claude to measure rather than pick: it ran all five test questions and all five `OUT_OF_SCOPE` questions through `store.search` and printed the best distance for each. That produced the two groups in the table above (at most 0.370 vs at least 0.825), and it kept the starter's 0.6, which lands mid-gap. It also rewrote `GROUNDING_INSTRUCTION` in `generate.py` to add a rule about lookalike documents (one post per building, per course) and a required `Source:` line. With a real key, all five test questions came back grounded, with a `Source:` line naming a file that contains the expected phrase (e.g. Aldridge Hall laundry -> `housing_aldridge_hall_laundry.txt`, "$1.75").
+**2. The cutoff and the prompt.** I didn't want to guess the relevance cutoff, so I had it print the best distance for my five real questions and the five out-of-scope ones. The real ones were 0.370 or lower and the out-of-scope ones were 0.825 or higher, so I kept 0.6 in the middle. It also tightened `GROUNDING_INSTRUCTION` in `generate.py` to warn about lookalike documents and to require a `Source:` line. Once my API key was working I ran all five questions and all of them came back grounded with the right file named (for example Aldridge Hall laundry gave `housing_aldridge_hall_laundry.txt` and "$1.75").
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
