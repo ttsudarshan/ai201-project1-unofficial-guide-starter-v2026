@@ -122,11 +122,9 @@ The bad: known damp problem on the ground floor; two rooms were taken offline in
 **Answer:**
 
 ```
-PENDING - needs a real GEMINI_API_KEY in .env. Run:
-  python app.py ask "Is the housing lottery random?"
-and paste the full output here, with the Source line visible. Retrieval for
-this question is already verified: best chunk admin_housing_lottery.txt at
-distance 0.254, under the 0.6 cutoff.
+The housing lottery is not entirely random in the way most people assume. While rising sophomores get a number drawn at random, juniors and seniors are ordered by accumulated credit hours first, with a random tie-break used only for ties.
+
+Source: admin_housing_lottery.txt
 ```
 
 **My relevance cutoff:** 0.6 (`THRESHOLD` in `config.py`). The two groups were far apart: every question the corpus covers had a best distance of 0.370 or lower, and every out-of-scope question had a best distance of 0.825 or higher. 0.6 sits in the middle of that 0.455-wide gap. Too low (say 0.3) would have refused my CS 210 question at 0.370; too high (say 0.9) would have let Mongolia, the World Cup and Rust through. Retrieval is top-k = 5, unchanged from the starter, since the right chunk was ranked first for all five questions.
@@ -166,7 +164,7 @@ distance 0.254, under the 0.6 cutoff.
 
 **1.** I gave Claude Code the full project brief and asked it to build the Unit 1 pieces. For the chunker it read the corpus first, noticed that a post's title is the only place the building or course is named, and wrote `chunker.py::split_documents` to repeat the title on every chunk and pack paragraphs up to 450 characters. I did not accept "it looks right": I had it print five chunks, and checked with a script that every `expects` phrase in `questions.py` appears whole inside one chunk (5 of 5 did). Its first attempt at filling in this README overwrote the later sections (Sample Answer, cutoff table) with a bad string splice; the diff showed it, so I had the file restored from git and redone with targeted replacements.
 
-**2.** For the cutoff I asked Claude to measure rather than pick: it ran all five test questions and all five `OUT_OF_SCOPE` questions through `store.search` and printed the best distance for each. That produced the two groups in the table above (at most 0.370 vs at least 0.825), and it kept the starter's 0.6, which lands mid-gap. It also rewrote `GROUNDING_INSTRUCTION` in `generate.py` to add a rule about lookalike documents (one post per building, per course) and a required `Source:` line. I still need to confirm with a real key that the model follows it; the Sample Answer above is pending that.
+**2.** For the cutoff I asked Claude to measure rather than pick: it ran all five test questions and all five `OUT_OF_SCOPE` questions through `store.search` and printed the best distance for each. That produced the two groups in the table above (at most 0.370 vs at least 0.825), and it kept the starter's 0.6, which lands mid-gap. It also rewrote `GROUNDING_INSTRUCTION` in `generate.py` to add a rule about lookalike documents (one post per building, per course) and a required `Source:` line. With a real key, all five test questions came back grounded, with a `Source:` line naming a file that contains the expected phrase (e.g. Aldridge Hall laundry -> `housing_aldridge_hall_laundry.txt`, "$1.75").
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
