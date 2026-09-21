@@ -22,6 +22,7 @@ to it, write down what you saw, and move on. That's a real observation about
 your pipeline, not giving up.
 """
 
+import re
 from dataclasses import dataclass
 
 import config
@@ -80,24 +81,90 @@ def fallback_split(
     return chunks
 
 
+def _sentences(paragraph: str) -> list[str]:
+    """Split a paragraph after ., ! or ? followed by whitespace."""
+    return [s for s in re.split(r"(?<=[.!?])\s+", paragraph) if s]
+
+
 def split_documents(documents: list[Document]) -> list[Chunk]:
     """
-    Split documents into chunks. ⚠️ REPLACE THE BODY OF THIS IN MILESTONE 3.
+    Paragraph-aware chunker with the document title repeated on every chunk.
 
-    Right now it just calls the fallback. That is the plain, generic behaviour
-    the brief is talking about.
+    Why: every campus_life post is a title line followed by one to four short
+    paragraphs, and the title is where the subject lives. "Laundry in Aldridge
+    Hall" is the only place the building is named -- the body just says
+    "Machines take $1.75 wash". A chunk without its title can't be found by
+    someone asking about Aldridge Hall.
 
-    When you write your own strategy, set `produced_by` to
-    "chunker.py::split_documents" so your README's Sample Chunks section names
-    the right function. `app.py chunks` prints that string for you.
-
-    Things worth thinking about before you write any code:
-      - Are your documents short posts or long guides?
-      - Is the useful information in one sentence, or spread over a paragraph?
-      - Would splitting on paragraph breaks keep more thoughts intact than
-        splitting on a character count?
+    Rules:
+      1. The first line is the title. It is prepended to every chunk.
+      2. Paragraphs are packed together, in order, until adding the next one
+         would push the chunk past config.MAX_CHUNK_CHARS. A post that fits
+         stays one chunk; paragraphs are never cut in half if they fit alone.
+      3. A single paragraph longer than the limit is cut on sentence
+         boundaries, and the last sentence of each piece is repeated at the
+         start of the next (the overlap), so no sentence is left dangling.
+      4. A trailing chunk with fewer than config.MIN_CHUNK_CHARS characters of
+         body is merged into the previous one instead of standing alone.
     """
-    return fallback_split(documents)
+    limit = config.MAX_CHUNK_CHARS
+    min_body = config.MIN_CHUNK_CHARS
+    chunks: list[Chunk] = []
+
+    for doc in documents:
+        blocks = [b.strip() for b in doc.text.split("\n\n") if b.strip()]
+        if not blocks:
+            continue
+        title, paragraphs = blocks[0], blocks[1:]
+        if not paragraphs:                      # a document that is only a title line
+            paragraphs, title = [title], ""
+
+        head = f"{title}\n\n" if title else ""
+        budget = max(limit - len(head), 100)
+
+        # Break oversized paragraphs into sentence groups first.
+        units: list[str] = []
+        for para in paragraphs:
+            if len(para) <= budget:
+                units.append(para)
+                continue
+            group: list[str] = []
+            for sent in _sentences(para):
+                if group and len(" ".join(group + [sent])) > budget:
+                    units.append(" ".join(group))
+                    group = [group[-1], sent]       # one-sentence overlap
+                else:
+                    group.append(sent)
+            if group:
+                units.append(" ".join(group))
+
+        # Pack units into chunk bodies.
+        bodies: list[str] = []
+        current = ""
+        for unit in units:
+            joined = f"{current}\n\n{unit}" if current else unit
+            if current and len(joined) > budget:
+                bodies.append(current)
+                current = unit
+            else:
+                current = joined
+        if current:
+            if bodies and len(current) < min_body:
+                bodies[-1] = f"{bodies[-1]}\n\n{current}"
+            else:
+                bodies.append(current)
+
+        for i, body in enumerate(bodies):
+            chunks.append(
+                Chunk(
+                    text=f"{head}{body}",
+                    source=doc.source,
+                    index=i,
+                    produced_by="chunker.py::split_documents",
+                )
+            )
+
+    return chunks
 
 
 def describe(chunks: list[Chunk]) -> str:

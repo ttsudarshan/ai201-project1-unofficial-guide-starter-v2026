@@ -30,6 +30,11 @@ CORPUS = os.getenv("AI201_CORPUS", "campus_life")
 CHUNK_SIZE = 800        # characters per chunk
 CHUNK_OVERLAP = 120     # characters shared between neighbouring chunks
 
+# Used by chunker.py::split_documents (the paragraph-aware chunker), not by the
+# fallback above. campus_life posts run 178-554 characters, title included.
+MAX_CHUNK_CHARS = 450   # a chunk (title + paragraphs) may not grow past this
+MIN_CHUNK_CHARS = 100   # a trailing piece shorter than this merges backwards
+
 
 # ─── Retrieval (Milestone 4) ─────────────────────────────────────────────────
 
