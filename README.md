@@ -197,15 +197,34 @@ Source: admin_housing_lottery.txt
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 4. `expects` phrase whole inside one chunk | 5 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
+| 5. Named source contains the answer | 4 of 5 | 5 of 5 | 5 of 5 | 5 of 5 | MET |
 
-<!-- Underneath, paste the REAL output for each criterion from one of your
-     runs — the actual text your system produced, not a description of it.
-     Name the file and function that produced it. -->
+Criteria 1, 2 and 5 come from `eval_criteria.py`, and criteria 3 and 4 are single deterministic passes, so the same number is in all three columns. `run_eval.py --label before` gave the same 5 of 5 pass in every run (log in `results/run_2026-09-20_2333_before.md`).
+
+Real output from run 1 (`generate.py::answer_from_chunks`, called by `run_eval.py::run_once`):
+
+```
+Criterion 1 and 2 — Is the housing lottery random?
+The housing lottery is not entirely random in the way most people assume. Rising sophomores get a number drawn at random, but juniors and seniors are ordered by accumulated credit hours first, with random tie-breaks only.
+
+Source: admin_housing_lottery.txt
+
+Criterion 5 — How much does a wash cost in the Aldridge Hall laundry?
+sources named: housing_aldridge_hall_laundry.txt
+
+Criterion 3 — gate (`gate.py::check`, cutoff 0.7)
+refused  (best distance 0.825)  What is the capital of Mongolia?
+refused  (best distance 0.934)  How do I change the oil in a diesel engine?
+refused  (best distance 0.886)  Who won the 1994 World Cup?
+refused  (best distance 0.844)  What is the recommended dosage of ibuprofen for a headache?
+refused  (best distance 0.896)  How do I write a for loop in Rust?
+```
+
+One thing I should say: `config.py` has `THRESHOLD = 0.7` (I had 0.6 in unit 1). Every out-of-scope best distance is 0.825 or higher and every in-scope one is 0.370 or lower, so 0.6 and 0.7 both give the same result on these ten questions. These runs used 0.7.
 
 ## Verdicts
 
@@ -220,11 +239,11 @@ Source: admin_housing_lottery.txt
 
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
+| 1 | Retrieved chunks contain the answer | MET | 5 of 5 in all three runs against a target of 4. The right file was in the top 5 every time. |
+| 2 | Every answer names a source | MET | 5 of 5 in all three runs. Every answer ended with a `Source:` line. |
+| 3 | Gate stops out-of-corpus questions | MET | 5 of 5 refused. The closest one (Mongolia, 0.825) is still 0.125 past the cutoff. |
+| 4 | `expects` phrase whole in one chunk | MET | 5 of 5 by string search over every chunk, so no answer is cut across a boundary. |
+| 5 | Named source contains the answer | MET | 5 of 5 in all three runs, and zero cited files that lacked the `expects` phrase. Closest call was the CS 210 question, which cited two files (`course_cs_210.txt` and `course_cs_210_exams.txt`), but both had it. |
 
 ## Diagnoses
 
@@ -246,11 +265,13 @@ Source: admin_housing_lottery.txt
 
      Milestone 3. -->
 
+I missed nothing, so there is no failure to diagnose. My targets were set low in two places. Criteria 1 and 5 allowed one miss in five, and I got 5 of 5 on every run, so that allowance wasn't needed. I'd tighten both to 5 of 5. Criterion 3 was also loose: 4 of 5 when the real gap was 0.455 wide, and the closest out-of-scope question was still far from the cutoff. Criterion 4 was already 5 of 5. The bigger weakness is that these are only five questions I chose myself, so a 5 of 5 doesn't say much about the lookalike posts (other dorms, other courses) that I expected to cause trouble.
+
 ## The Improvement
 
-**What I changed:**
+**What I changed:** Nothing in the pipeline. With all five criteria met I didn't have a diagnosis to connect a fix to, and I didn't want to change something just to have a before and after. The only difference between unit 1 and these runs is the cutoff in `config.py`, 0.6 to 0.7, which doesn't change any result on my ten questions.
 
-**Why I picked it:**
+**Why I picked it:** There was no miss to fix, so there is no diagnosis to point at.
 
 <!-- Connect it to a specific diagnosis above in one sentence. If you can't,
      you picked a fix because it sounded impressive. -->
@@ -262,13 +283,11 @@ Source: admin_housing_lottery.txt
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+Not run, since nothing was changed. The numbers are the same as the table above.
 
 **Did it help?**
+
+There was no fix to help. I can't claim an improvement, and I'd rather leave that empty than invent one.
 
 <!-- Say plainly whether it did, and how you know. If it made things worse,
      say that — a change that backfired, honestly reported, earns full credit
@@ -287,9 +306,13 @@ Source: admin_housing_lottery.txt
 
      Milestone 5. -->
 
+No criterion is missed. What's left is that the tests are too easy to be sure of anything. There are five questions, all of them written by me after reading the posts, and each has one clean answer in one post. I haven't tested questions that need two documents, questions that use different words than the post, or a question about a building that has a sibling post with nearly the same text. I stopped because the criteria I wrote are all met and I ran out of time to write harder questions.
+
 ## What I'd Do Differently
 
 <!-- Knowing what you know now — which of your five criteria would you write
      differently, and why?
 
      Milestone 5. -->
+
+I'd tighten criteria 1 and 5 to 5 of 5, since I never used the one miss they allowed. I'd also change criterion 3 to check the distance gap directly (for example, best out-of-scope distance at least 0.1 past the cutoff) instead of counting refusals, because a count of 5 of 5 doesn't tell me how close I was. And I'd write criterion 1 against a bigger set of questions, ideally ten with at least three that name a sibling building or course, because that is the failure I expected and my five questions never really tested it.
