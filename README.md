@@ -315,4 +315,4 @@ No criterion is missed. What's left is that the tests are too easy to be sure of
 
      Milestone 5. -->
 
-I'd tighten criteria 1 and 5 to 5 of 5, since I never used the one miss they allowed. I'd also change criterion 3 to check the distance gap directly (for example, best out-of-scope distance at least 0.1 past the cutoff) instead of counting refusals, because a count of 5 of 5 doesn't tell me how close I was. And I'd write criterion 1 against a bigger set of questions, ideally ten with at least three that name a sibling building or course, because that is the failure I expected and my five questions never really tested it.
+I'd tighten criteria 1 and 5 to 5 of 5, since I never used the one miss they allowed. I'd also change criterion 3 to check the distance gap directly (for example, best out-of-scope distance at least 0.1 past the cutoff) instead of counting refusals, because a count of 5 of 5 doesn't tell me how close I was. And I'd write criterion 1 against a bigger set of questions, ideally ten with at least three that name a sibling buialding or course, because that is the failure I expected and my five questions never really tested it.
