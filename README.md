@@ -367,10 +367,42 @@ template, so `course_hist_118_workload.txt` and `course_phys_130_workload.txt`
 are near-identical prose. Nearly all the embedding's 384 dimensions are spent
 on "this is a post about weekly workload for a course", which both share, and
 the only thing separating them is the token `hist` / `118` versus `phys` /
-`130` — which a sentence embedding compresses almost to nothing. Cosine
-similarity therefore ranks them essentially by chance, and for HIST 118 the
-chance went the wrong way. This is the failure a student would actually be
-hurt by: a confident, well-sourced answer about the wrong course.
+`130` — which a sentence embedding compresses almost to nothing.
+
+There is a second reason this particular pair collides, and I only found it by
+opening both files:
+
+```
+Workload for HIST 118 Modern World History
+People keep asking so: a lot of reading, about 120 pages a week, but no problem sets.
+
+Workload for PHYS 130 Mechanics
+People keep asking so: 7 hours a week, plus 3 on lab weeks.
+```
+
+HIST 118's workload is given in **pages**, not hours. PHYS 130's is the only
+one of the two that says "hours a week" — which is the phrase in my question.
+So semantic search was not malfunctioning; it was matching the question's
+wording to the only post that shares it. The question has no answer in the
+corpus at all.
+
+**How much did this actually cost me?** Less than I first wrote down. I checked
+the end-to-end answer, and the before system refuses this question correctly:
+
+```
+$ AI201_HYBRID=0 python app.py ask "How many hours a week is HIST 118?"
+  (best distance 0.448, cutoff 0.7)
+I don't have enough information about that.
+Sources retrieved: course_econ_101_workload.txt, course_hist_118.txt,
+course_hist_118_workload.txt, course_phys_130_workload.txt, course_stat_150_workload.txt
+```
+
+The wrong post was at rank 1, but `GROUNDING_INSTRUCTION` in `generate.py`
+already tells the model to use only a document whose title names exactly what
+the question asks about, and it did. So this is a real ranking defect sitting
+behind a prompt that happens to mask it — worth fixing, because the prompt is
+the weaker of the two layers and I would rather not depend on it, but not a
+wrong answer any student ever saw.
 
 ### Which criteria I would tighten
 
@@ -447,19 +479,29 @@ questions, same script, hybrid the only difference:
 | Right file at rank 1, overall | 25 of 32 (78%) | **28 of 32 (88%)** |
 | Right building or course at rank 1 | 31 of 32 (97%) | **32 of 32 (100%)** |
 
-The HIST 118 failure is fixed — it now returns `course_hist_118_workload.txt`
-at rank 1 — and the three course-exam questions that were returning the parent
-course post now return the exams post. **It also caused one regression:** "Is
-Morrow House noisy at night?" fell from rank 1 to rank 2, because the parent
-Morrow post contains both `morrow` and `noise` and BM25 rewards it for the
-repetition. Net is plus three, minus one.
+The HIST 118 failure is fixed at the ranking level — it now returns
+`course_hist_118_workload.txt` at rank 1 — and the three course-exam questions
+that were returning the parent course post now return the exams post. **It also
+caused one regression:** "Is Morrow House noisy at night?" fell from rank 1 to
+rank 2, because the parent Morrow post contains both `morrow` and `noise` and
+BM25 rewards it for the repetition. Net is plus three, minus one.
 
-I want to be careful about how much I claim here. The 78% → 88% figure is the
-one that looks impressive and it is the one I trust least, because it counts
-those parent-post results as failures when they contain the correct answer. The
-honest summary is: **hybrid search fixed the single case where my system named
-the wrong course, cost me one rank-1 position elsewhere, and changed nothing
-about the five criteria I set in unit 1.**
+**On the answers a user actually sees: I could not find a single case where it
+made a difference.** I ran the HIST 118 question end to end both ways and got
+the same refusal from each, because the grounding instruction was already
+rejecting the wrong-course post that retrieval had put first. So every
+improvement I measured is an improvement in what the model is *shown*, not in
+what it *says*.
+
+I want to be careful about how much I claim. The 78% → 88% figure is the one
+that looks impressive and the one I trust least: it counts parent-post results
+as failures when they contain the correct answer, and it measures ranking
+rather than output. The honest summary is three sentences. **Hybrid search
+improved retrieval ranking on a 32-question probe set, decisively on the
+course-exam questions. It cost me one rank-1 position on Morrow House noise. It
+changed no answer I was able to observe, and none of my five criteria — which
+means I have improved a stage of the pipeline without yet showing that the
+improvement reaches the user.**
 
 One side effect I did not anticipate: `search` no longer returns results
 strictly nearest-first, because fused order is not distance order. That is
@@ -506,7 +548,30 @@ that does not.
 evidence about anything in between — a question my corpus half-covers. 5 of 5
 on a gap that wide is not a hard test.
 
-**5. Fusion can only rerank what the semantic pool returned.** With 91 chunks
+**5. The improvement does not demonstrably reach the user.** Hybrid search
+moved retrieval ranking and moved nothing downstream of it that I could
+observe. I would want to find a question where the wrong-neighbour post is the
+*only* plausible source, so the grounding instruction cannot quietly rescue it,
+and check whether the answer changes. Until I have that, "it helped" is a claim
+about a stage, not about the system.
+
+**6. The refusal line is not exact, and criterion 2 would not notice.**
+`GROUNDING_INSTRUCTION` says to reply exactly "I don't have enough information
+about that." The HIST 118 refusal came back as that sentence *plus* a `Source:`
+line naming three files it did not use:
+
+```
+I don't have enough information about that.
+
+Source: course_hist_118.txt, course_hist_118_exams.txt, course_hist_118_workload.txt
+```
+
+Harmless here, but criterion 2 counts an answer as passing when it names a
+source, so a refusal that cites its way out would score as a pass. None of my
+five questions refuse, so this never affected a number — it is a third example
+of the same lesson the other two criteria taught me.
+
+**7. Fusion can only rerank what the semantic pool returned.** With 91 chunks
 the pool is the whole corpus, so it does not bite here. On a larger index a
 chunk BM25 loves but the embedding never surfaced would be dropped, because I
 would not hold a real cosine distance for it and the gate needs one. It is
