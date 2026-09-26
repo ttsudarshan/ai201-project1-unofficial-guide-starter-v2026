@@ -18,6 +18,7 @@ rest of the project if they were wrong:
 """
 
 import os
+import re
 import shutil
 from dataclasses import dataclass
 
@@ -178,18 +179,79 @@ def build_index(
     return len(chunks)
 
 
+# ─── Keyword search, for the hybrid half of retrieval ────────────────────────
+
+# Lowercase runs of letters and digits, keeping decimals whole so "$1.75"
+# tokenises to "1.75" rather than "1" and "75". "CS 210" becomes ["cs", "210"],
+# and "210" is the token that separates CS 210 from CS 340 — the distinction
+# the embedding kept losing.
+_TOKEN = re.compile(r"[a-z0-9]+(?:\.[0-9]+)?")
+
+# One BM25 index per collection, rebuilt if the collection's size changes.
+_bm25_cache: dict[str, tuple] = {}
+
+
+def _tokenize(text: str) -> list[str]:
+    return _TOKEN.findall(text.lower())
+
+
+def _bm25_for(collection):
+    """Build (once) a BM25 keyword index over every chunk in a collection.
+
+    Cached because building it means reading and tokenising every chunk, and a
+    three-run evaluation calls `search` dozens of times against an index that
+    hasn't changed in between.
+    """
+    from rank_bm25 import BM25Okapi
+
+    count = collection.count()
+    cached = _bm25_cache.get(collection.name)
+    if cached is not None and cached[0] == count:
+        return cached[1], cached[2]
+
+    raw = collection.get(include=["documents"])
+    ids = list(raw["ids"])
+    bm25 = BM25Okapi([_tokenize(d) for d in raw["documents"]])
+    _bm25_cache[collection.name] = (count, bm25, ids)
+    return bm25, ids
+
+
+def _rrf(semantic_ids: list[str], keyword_ids: list[str]) -> dict[str, float]:
+    """Reciprocal Rank Fusion of two ranked lists of chunk ids.
+
+    Each list contributes 1 / (RRF_K + rank) to every id it ranks. Adding rank
+    contributions rather than raw scores is the point: a cosine distance and a
+    BM25 score have no common scale, but "third-best" means the same thing in
+    both lists.
+    """
+    scores: dict[str, float] = {}
+    for ranked in (semantic_ids, keyword_ids):
+        for rank, chunk_id in enumerate(ranked, start=1):
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (config.RRF_K + rank)
+    return scores
+
+
 def search(
     question: str,
     top_k: int | None = None,
     corpus: str | None = None,
     variant: str = "default",
+    hybrid: bool | None = None,
 ) -> list[Result]:
     """
-    Retrieve the chunks closest in meaning to a question.
+    Retrieve the chunks most relevant to a question.
 
-    Returns them nearest-first, each with its distance.
+    With `hybrid` off this is pure semantic search and returns chunks
+    nearest-first. With it on, a BM25 keyword ranking is fused with the
+    semantic one (see `_rrf`) and the chunks come back in fused order.
+
+    Either way every Result carries its real cosine distance, because that is
+    what `gate.py::check` compares against the threshold. Fusion decides *which*
+    chunks come back and in what order; it never invents a distance, so the
+    cutoff calibrated in unit 1 still means what it meant.
     """
     top_k = top_k or config.TOP_K
+    hybrid = config.HYBRID_SEARCH if hybrid is None else hybrid
     name = config.collection_name(corpus, variant)
 
     try:
@@ -199,25 +261,46 @@ def search(
             f"No index called '{name}'. Run `python app.py index` first."
         ) from exc
 
+    count = collection.count()
+    # Semantic side. Pure search needs only top_k; fusion needs a pool to
+    # rerank, and on an index this size the pool is the whole corpus.
+    n_results = min(count, config.HYBRID_POOL if hybrid else top_k)
+
     raw = collection.query(
         query_embeddings=embed([question]),
-        n_results=min(top_k, collection.count()),
+        n_results=n_results,
     )
 
-    results: list[Result] = []
-    for text, meta, distance in zip(
-        raw["documents"][0], raw["metadatas"][0], raw["distances"][0]
+    found: dict[str, Result] = {}
+    semantic_ids: list[str] = []
+    for chunk_id, text, meta, distance in zip(
+        raw["ids"][0], raw["documents"][0], raw["metadatas"][0], raw["distances"][0]
     ):
-        results.append(
-            Result(
-                text=text,
-                source=str(meta.get("source", "unknown")),
-                label=f"{meta.get('source', 'unknown')}#{meta.get('index', 0)}",
-                distance=float(distance),
-                produced_by=str(meta.get("produced_by", "unknown")),
-            )
+        semantic_ids.append(chunk_id)
+        found[chunk_id] = Result(
+            text=text,
+            source=str(meta.get("source", "unknown")),
+            label=f"{meta.get('source', 'unknown')}#{meta.get('index', 0)}",
+            distance=float(distance),
+            produced_by=str(meta.get("produced_by", "unknown")),
         )
-    return results
+
+    if not hybrid:
+        return [found[i] for i in semantic_ids]
+
+    bm25, all_ids = _bm25_for(collection)
+    scored = sorted(
+        zip(all_ids, bm25.get_scores(_tokenize(question))),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    # Only chunks the semantic pool also returned can be ranked: those are the
+    # ones we hold a real cosine distance for, and the gate needs that distance.
+    keyword_ids = [i for i, score in scored if score > 0 and i in found]
+
+    fused = _rrf(semantic_ids, keyword_ids)
+    order = sorted(fused, key=lambda i: (-fused[i], semantic_ids.index(i)))
+    return [found[i] for i in order[:top_k]]
 
 
 def index_exists(corpus: str | None = None, variant: str = "default") -> bool:
