@@ -51,6 +51,35 @@ TOP_K = 5               # how many chunks to pull back per question
 THRESHOLD = 0.7         # was 0.6. In-corpus best <= 0.370 on my 5 questions, out-of-corpus best >= 0.825
 
 
+# ─── Hybrid search (unit 2 improvement) ──────────────────────────────────────
+# Semantic search alone matches on meaning, which is exactly wrong for a corpus
+# like this one: there is a near-identical post for every dorm and every
+# course, and the only thing telling them apart is a name or a number the
+# embedding barely notices. "How many hours a week is HIST 118?" returned the
+# PHYS 130 workload post first, because the two read almost identically.
+#
+# BM25 is a keyword ranker, so "hist", "118" and "laundry" count for a lot.
+# Running both and fusing their rankings is the fix. Set this to False to get
+# the pure-semantic behaviour back — that is how the before/after was measured.
+
+# AI201_HYBRID=0 turns fusion off without editing this file, which is how the
+# "before" half of the unit 2 run log was produced:
+#     AI201_HYBRID=0 python run_eval.py --label before
+HYBRID_SEARCH = os.getenv("AI201_HYBRID", "1") != "0"
+
+# Reciprocal Rank Fusion. Each ranker contributes 1 / (RRF_K + rank) to every
+# chunk, and the two contributions are added. Fusing *ranks* rather than scores
+# means a cosine distance and a BM25 score never have to be put on the same
+# scale, which they cannot honestly be. 60 is the value from the paper that
+# introduced RRF and is not tuned to this corpus.
+RRF_K = 60
+
+# How many chunks the semantic side pulls back for fusion to rerank. The
+# campus_life index is 91 chunks, so this takes all of them and BM25 sees the
+# whole corpus. On a much larger index it caps the work.
+HYBRID_POOL = 500
+
+
 # ─── Models ──────────────────────────────────────────────────────────────────
 # Embeddings run on your own machine and cost no API quota.
 # Only generation calls out to a service.
@@ -70,7 +99,10 @@ MODEL = os.getenv("AI201_MODEL", "gemini-3.5-flash-lite")
 # You should not need to touch these. They exist so that a runaway loop costs
 # you a warning instead of your whole day's allowance.
 
-REQUESTS_PER_MINUTE = 30       # outgoing calls the limiter will allow per minute
+# AI201_RPM lowers this without editing the file. The free tier allows 15/min
+# for gemini-3.5-flash-lite, so the unit 2 evaluation runs were paced with
+#     AI201_RPM=10 python run_eval.py ...
+REQUESTS_PER_MINUTE = int(os.getenv("AI201_RPM", "30"))   # outgoing calls allowed per minute
 SESSION_REQUEST_BUDGET = 300   # stop and warn rather than draining the daily quota
 MAX_RETRIES = 4                # on 429 / resource-exhausted, with backoff
 
