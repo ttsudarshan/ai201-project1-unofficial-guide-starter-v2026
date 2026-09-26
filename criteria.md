@@ -93,6 +93,20 @@ cut through one is the exact way chunking would lose an answer. It is 5 of 5
 because it is a deterministic string check with no judgement in it: any split
 answer is a chunking bug, and I can see it immediately.
 
+> **Revised in unit 2:** For each of my 5 test questions, the `expects` phrase
+> appears whole inside the chunk that retrieval actually returns at rank 1 for
+> that question: 5 of 5.
+>
+> **Why revised:** The original measured the wrong thing. It searches *every*
+> chunk in the index for the phrase, and my phrases are not distinctive.
+> `$1.75` appears in 8 chunks spanning 4 different buildings, and `lecture`
+> appears in 8 course chunks. So the check passes as long as the phrase exists
+> somewhere in the corpus — which it always will, because I copied the phrases
+> out of the corpus when I wrote `questions.py`. It cannot fail, and a check
+> that cannot fail measures nothing. Tying it to the chunk retrieval actually
+> hands the model makes it a real test of whether the answer survived chunking
+> *for that question*. The target stays at 5 of 5; only what is counted changed.
+
 ---
 
 ## 5. Your choice
@@ -118,6 +132,22 @@ question) would pass it and still mislead a student. My corpus is full of
 sibling documents that read almost the same, so wrong-neighbour citations are
 the failure I care most about. 4 of 5 matches criterion 1: if retrieval can
 miss once, attribution can too.
+
+> **Revised in unit 2:** For at least 4 of my 5 test questions, every file the
+> answer names is one of the files that actually answers that question — the
+> post about the right building or the right course.
+>
+> **Why revised:** The original does not catch the failure I wrote it to catch,
+> and I can show it with the exact example I used to justify it. I said a
+> citation of Fenwick Court's laundry post for an Aldridge Hall question
+> "would pass criterion 2 and still mislead a student". It would also pass
+> criterion 5 as originally written, because
+> `housing_fenwick_court_laundry.txt` contains the string `$1.75` — as the
+> **dry** price, where Aldridge's `$1.75` is the **wash** price. Checking that
+> a cited file contains the phrase somewhere is not the same as checking it is
+> the right file, and on a corpus of near-identical siblings the two come
+> apart. The revision names the acceptable files per question instead. The
+> target stays at 4 of 5.
 
 ---
 
